@@ -20,9 +20,11 @@ type encodes struct {
 	hash   string
 }
 
+// EncodesData parses the data in the encodes csv file
 type EncodesData struct {
 }
 
+// Read reads the csv file and returns an array of encodes structs
 func (e *EncodesData) Read(path string) ([]encodes, error) {
 
 	file, err := os.Open(path)
@@ -37,6 +39,7 @@ func (e *EncodesData) Read(path string) ([]encodes, error) {
 	return entries, err
 }
 
+// readEncodes reads the csv and converts it to an array of encodes structs
 func readEncodes(r *csv.Reader) ([]encodes, error) {
 	entries := make([]encodes, 0)
 	// verify expected CSV headers

@@ -1,9 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"strconv"
 	"time"
-	"fmt"
 
 	configv2 "github.com/gookit/config/v2"
 )
@@ -28,6 +28,7 @@ type Config struct {
 	EndTime          time.Time
 }
 
+// New builds a Config struct with values from environment varialbes or suitable defaults
 func New() (*Config, error) {
 	c := Config{}
 	threads := configv2.GetEnv("THREADS", DefaultThreads)
@@ -43,7 +44,7 @@ func New() (*Config, error) {
 
 	c.EncodingFilePath = configv2.GetEnv("ENCODING_FILE_PATH", DefaultEncodingFilePath)
 	c.DecodesFilePath = configv2.GetEnv("DECODES_FILE_PATH", DefaultDecodesFilePath)
-	c.StartTime, err = time.Parse(time.RFC3339, configv2.GetEnv("START_TIME", DefaultStartTime) )
+	c.StartTime, err = time.Parse(time.RFC3339, configv2.GetEnv("START_TIME", DefaultStartTime))
 
 	if err != nil {
 		return nil, fmt.Errorf("parse start time: %w", err)

@@ -7,21 +7,25 @@ import (
 	"os"
 )
 
-type DecodesData struct {
+type decodesData struct {
 	file    *os.File
 	end     int64
 	scanner *bufio.Scanner
 }
 
-func NewDecodesData(path string) (*DecodesData, error) {
+// NewDecodesData creates a new decodesData struct with defaults set.
+// This struct is used to read a range of offsets from the decode json file
+func NewDecodesData(path string) (*decodesData, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open decode file: %w", err)
 	}
-	return &DecodesData{file: file}, nil
+	return &decodesData{file: file}, nil
 }
 
-func (d *DecodesData) SetScanRange(start, end int64) error {
+// SetScanRange sets the start and end range.  Scan() will use these
+// values to deterime where to start reading and when to return EOF
+func (d *decodesData) SetScanRange(start, end int64) error {
 	d.end = end
 	if d.file == nil {
 		return fmt.Errorf("file not opened")
@@ -39,7 +43,10 @@ func (d *DecodesData) SetScanRange(start, end int64) error {
 	return nil
 }
 
-func (d *DecodesData) Scan() (string, error) {
+// Scan reads one line at a time from the file.
+// EOF is returned either when the current offsset exceeds
+// the end offset or when the end of the file is reached
+func (d *decodesData) Scan() (string, error) {
 	if d.scanner == nil {
 		return "", fmt.Errorf("scanner not initialized")
 	}
@@ -53,7 +60,8 @@ func (d *DecodesData) Scan() (string, error) {
 	return d.scanner.Text(), d.scanner.Err()
 }
 
-func (d *DecodesData) Close() {
+// Close closes the unerlying file object
+func (d *decodesData) Close() {
 	if d.file != nil {
 		d.file.Close()
 	}

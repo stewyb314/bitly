@@ -3,6 +3,7 @@ package ingest
 import (
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -48,11 +49,13 @@ func TestAgrigator(t *testing.T) {
 			in, err := New(*c, log)
 			assert.Nil(t, err)
 			resultChan := make(chan map[string]int)
-			go in.agrigator(resultChan)
+			var wg sync.WaitGroup
+			wg.Go(func() { in.agrigator(resultChan) })
 			for _, input := range tc.input {
 				resultChan <- input
 			}
 			close(resultChan)
+			wg.Wait()
 			assert.EqualValues(t, tc.expected, in.result)
 		})
 	}
@@ -78,28 +81,25 @@ func TestRunThread(t *testing.T) {
 	endcodesFile := "/tmp/encodes.csv"
 	cases := map[string]struct {
 		expected map[string]int
-		env map[string]string
-
+		env      map[string]string
 	}{
 		"date limited": {
-		env: map[string]string{
-			"THREADS":"1",
-			"DEBUG": "true",
-			"ENCODING_FILE_PATH": endcodesFile,
-			"DECODES_FILE_PATH": decodesFile,
-
-		},
-		expected: map[string]int {
-			"1234.com": 2,
-			"abcd.com": 1,
-			"def.com":2,
-		},
-
+			env: map[string]string{
+				"THREADS":            "1",
+				"DEBUG":              "true",
+				"ENCODING_FILE_PATH": endcodesFile,
+				"DECODES_FILE_PATH":  decodesFile,
+			},
+			expected: map[string]int{
+				"1234.com": 2,
+				"abcd.com": 1,
+				"def.com":  2,
+			},
 		},
 	}
 
 	for name, tc := range cases {
-		t.Run(name, func(t *testing.T){
+		t.Run(name, func(t *testing.T) {
 			err := os.WriteFile(decodesFile, []byte(fileContent), 0644)
 			assert.Nil(t, err)
 			defer os.Remove(decodesFile)
@@ -119,37 +119,34 @@ func TestRunThread(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, tc.expected, in.result)
 
-
-
-
 		})
 	}
 	/*
-	t.Run("RunThread", func(t *testing.T) {
-		err := os.WriteFile(decodesFile, []byte(fileContent), 0644)
-		assert.Nil(t, err)
-		defer os.Remove(decodesFile)
-		d, err := NewDecodesData(decodesFile)
-		log, _ := test.NewNullLogger()
-		in, err := New(*c, log)
-		in.enc = []encodes{
-			{url: "1234.com", hash: "1234", domain: "bit.ly"},
-			{url: "abcd.com", hash: "abcd", domain: "bit.ly"},
-			{url: "not.in.decode.com", hash: "notindecode", domain: "bit.ly"},
-			{url: "def.com", hash: "def", domain: "bit.ly"},
-		}
-		offsetChan := make(chan offsetRange)
-		resultChan := make(chan map[string]int)
+		t.Run("RunThread", func(t *testing.T) {
+			err := os.WriteFile(decodesFile, []byte(fileContent), 0644)
+			assert.Nil(t, err)
+			defer os.Remove(decodesFile)
+			d, err := NewDecodesData(decodesFile)
+			log, _ := test.NewNullLogger()
+			in, err := New(*c, log)
+			in.enc = []encodes{
+				{url: "1234.com", hash: "1234", domain: "bit.ly"},
+				{url: "abcd.com", hash: "abcd", domain: "bit.ly"},
+				{url: "not.in.decode.com", hash: "notindecode", domain: "bit.ly"},
+				{url: "def.com", hash: "def", domain: "bit.ly"},
+			}
+			offsetChan := make(chan offsetRange)
+			resultChan := make(chan map[string]int)
 
-		go in.runThread(1, d, offsetChan, resultChan)
-		offsetChan <- offsetRange{start: 0, end: 5000}
-		close(offsetChan)
-		result := <-resultChan
-		close(resultChan)
-		fmt.Printf("%+v", result)
-		assert.Nil(t, 1)
+			go in.runThread(1, d, offsetChan, resultChan)
+			offsetChan <- offsetRange{start: 0, end: 5000}
+			close(offsetChan)
+			result := <-resultChan
+			close(resultChan)
+			fmt.Printf("%+v", result)
+			assert.Nil(t, 1)
 
-	})
-		*/
+		})
+	*/
 
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -41,11 +42,12 @@ type offsetRange struct {
 	end   int64
 }
 
+// New creates a new ingest struct with private members initilized
 func New(cfg config.Config, log *logrus.Logger) (*ingest, error) {
 	i := ingest{
 		cfg:     cfg,
 		encoder: &EncodesData{},
-		decoder: &DecodesData{},
+		decoder: &decodesData{},
 	}
 	if cfg.Debug {
 		log.SetLevel(logrus.DebugLevel)
@@ -57,6 +59,7 @@ func New(cfg config.Config, log *logrus.Logger) (*ingest, error) {
 	return &i, nil
 }
 
+// Run starts and manages go routines that do the work of parsing the decodes file
 func (in *ingest) Run() error {
 	var err error
 	in.enc, err = in.encoder.Read(in.cfg.EncodingFilePath)
@@ -64,16 +67,19 @@ func (in *ingest) Run() error {
 		return err
 	}
 
+	// Run() will use this channel to send each go routine the next range of file offsets to read
 	offsetChan := make(chan offsetRange, in.cfg.Threads)
-	resultChan := make(chan map[string]int)
+	// as each go routine getnerates a map of url->count, it passes the map to resultChan.
+	// agrigator() reads from resultChan and agrigates the results into a single map
+	resultChan := make(chan map[string]int, in.cfg.Threads)
 	var wg sync.WaitGroup
 	var agWg sync.WaitGroup
 
-	agWg.Go(func(){
+	agWg.Go(func() {
 		in.agrigator(resultChan)
 	})
 
-	// start the worker threads
+	// start each thread
 	for i := range in.cfg.Threads {
 		d, err := NewDecodesData(in.cfg.DecodesFilePath)
 		if err != nil {
@@ -85,7 +91,7 @@ func (in *ingest) Run() error {
 		})
 	}
 
-	// send the range of
+	// get the size of the file and start sending start, end offsets for each go routine to read
 	s, err := os.Stat(in.cfg.DecodesFilePath)
 	if err != nil {
 		return fmt.Errorf("stat file: %w", err)
@@ -97,18 +103,34 @@ func (in *ingest) Run() error {
 		offsetChan <- offsetRange{start: offset, end: offset + chunk}
 	}
 
+	// we've sent all if the offsets, so close the channel and wait for the go routines to finish
 	close(offsetChan)
 	wg.Wait()
+	// done processing the data, close the resultChan to indicate to agrigator() that we're done then wait for agriagtor to finish
 	close(resultChan)
 	agWg.Wait()
 
 	return nil
 }
+
+// PrintResults sorts the in.results by count and prints the results
 func (in *ingest) PrintResults() {
-	for url, count := range in.result {
-		fmt.Printf("\n\nurl: %s count: %d\n", url, count)
+	type keyValuePair struct {
+		key   string
+		value int
 	}
+	values := make([]keyValuePair, 0)
+	for k, v := range in.result {
+		values = append(values, keyValuePair{key: k, value: v})
+	}
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].value > values[j].value
+	})
+	fmt.Println(values)
 }
+
+// agrigator recieves map of url->count when each runThread() finishes reading a chunk of the file,
+// it then merges each of the maps into the final result
 func (in *ingest) agrigator(recv <-chan map[string]int) {
 	for data := range recv {
 		for url, count := range data {
@@ -120,6 +142,14 @@ func (in *ingest) agrigator(recv <-chan map[string]int) {
 		}
 	}
 }
+
+// runThread:
+// 1) receives a range of offsets from the recv channel
+// 2) reads data from the file one line at a time until it reaches the end offset
+// 3) unmarshals each line
+// 4) if the line is in the correct date range and a hash from the encoding.csv file, add it to the results map
+// 5) when EOF is reached (indicating the end offset has been reached), send the result map to agrigator() via the send channel
+// 6) loop and read the next offset
 func (in *ingest) runThread(threadId int, decode decoder, recv <-chan offsetRange, send chan<- map[string]int) {
 	log := in.log.WithField("thread_id", threadId)
 	log.Debug("starting...")
@@ -156,7 +186,6 @@ func (in *ingest) runThread(threadId int, decode decoder, recv <-chan offsetRang
 				continue
 			}
 			if t.Before(in.cfg.StartTime) || t.After(in.cfg.EndTime) {
-				log.Debugf("disregarding %v", t.String())
 				continue
 			}
 
@@ -165,7 +194,6 @@ func (in *ingest) runThread(threadId int, decode decoder, recv <-chan offsetRang
 			hash := tokens[len(tokens)-1]
 			url, ok := hash2url[hash]
 			if !ok {
-				log.Debugf("ignoring hash %s", hash)
 				continue
 			}
 			result[url] += 1
