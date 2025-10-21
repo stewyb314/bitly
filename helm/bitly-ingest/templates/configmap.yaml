@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bitly-ingest.fullname" . }}-config
+  labels:
+    {{- include "bitly-ingest.labels" . | nindent 4 }}
+data:
+  DEBUG: {{ .Values.app.debug | default false | quote }}
+  PORT: {{ .Values.app.port | default 8080 | quote }}
+  ENCODING_FILE_PATH: {{ .Values.app.encodingFilePath | default "data/encodes.csv" | quote }}
+  DECODES_FILE_PATH: {{ .Values.app.decodesFilePath | default "data/decodes.json" | quote }}
+  END_TIME: {{ .Values.app.endTime | default "2022-01-01T00:00:00Z" | quote }}
+  START_TIME: {{ .Values.app.startTime | default "2021-01-01T00:00:00Z" | quote }}
+  RUN_DAEMON: {{ .Values.app.runDaemon | default false | quote }}
+  THREADS: {{ .Values.app.threads | default 3 | quote }}
+  CHUNK_SIZE_IN_KB: {{ .Values.app.chunkSizeInKB | default 200 | quote }}

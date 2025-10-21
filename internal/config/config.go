@@ -14,8 +14,10 @@ const (
 	DefaultEncodingFilePath = "data/encodes.csv"
 	DefaultDecodesFilePath  = "data/decodes.json"
 	DefaultDebug            = false
+	DefaultRunDaemon        = false
 	DefaultStartTime        = "2021-01-01T00:00:00Z"
 	DefaultEndTime          = "2021-12-31T23:59:59Z"
+	DefaultPort             = "8080"
 )
 
 type Config struct {
@@ -24,8 +26,10 @@ type Config struct {
 	EncodingFilePath string
 	DecodesFilePath  string
 	Debug            bool
+	RunDaemon        bool
 	StartTime        time.Time
 	EndTime          time.Time
+	Port             int
 }
 
 // New builds a Config struct with values from environment varialbes or suitable defaults
@@ -39,6 +43,11 @@ func New() (*Config, error) {
 
 	chunkSize := configv2.GetEnv("CHUNK_SIZE_IN_KB", DefaultChunkSizeInKB)
 	if c.ChunkSizeInKB, err = strconv.Atoi(chunkSize); err != nil {
+		return nil, err
+	}
+
+	port := configv2.GetEnv("PORT", DefaultPort)
+	if c.Port, err = strconv.Atoi(port); err != nil {
 		return nil, err
 	}
 
@@ -60,6 +69,13 @@ func New() (*Config, error) {
 		c.Debug = true
 	} else {
 		c.Debug = DefaultDebug
+	}
+
+	daemon := configv2.GetEnv("RUN_DAEMON", "false")
+	if daemon == "true" || daemon == "1" {
+		c.RunDaemon = true
+	} else {
+		c.RunDaemon = DefaultRunDaemon
 	}
 	return &c, nil
 }

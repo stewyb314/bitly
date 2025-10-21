@@ -28,9 +28,9 @@ type decodeForamt struct {
 	Timestamp string `json:"timestamp"`
 }
 
-type ingest struct {
-	cfg     config.Config
-	log     *logrus.Logger
+type Ingest struct {
+	Cfg     config.Config
+	Log     *logrus.Logger
 	encoder encoder
 	decoder decoder
 	enc     []encodes
@@ -43,9 +43,9 @@ type offsetRange struct {
 }
 
 // New creates a new ingest struct with private members initilized
-func New(cfg config.Config, log *logrus.Logger) (*ingest, error) {
-	i := ingest{
-		cfg:     cfg,
+func New(cfg config.Config, log *logrus.Logger) (*Ingest, error) {
+	i := Ingest{
+		Cfg:     cfg,
 		encoder: &EncodesData{},
 		decoder: &decodesData{},
 	}
@@ -54,24 +54,24 @@ func New(cfg config.Config, log *logrus.Logger) (*ingest, error) {
 	} else {
 		log.SetLevel(logrus.InfoLevel)
 	}
-	i.log = log
+	i.Log = log
 	i.result = make(map[string]int)
 	return &i, nil
 }
 
 // Run starts and manages go routines that do the work of parsing the decodes file
-func (in *ingest) Run() error {
+func (in *Ingest) Run() error {
 	var err error
-	in.enc, err = in.encoder.Read(in.cfg.EncodingFilePath)
+	in.enc, err = in.encoder.Read(in.Cfg.EncodingFilePath)
 	if err != nil {
 		return err
 	}
 
 	// Run() will use this channel to send each go routine the next range of file offsets to read
-	offsetChan := make(chan offsetRange, in.cfg.Threads)
+	offsetChan := make(chan offsetRange, in.Cfg.Threads)
 	// as each go routine getnerates a map of url->count, it passes the map to resultChan.
 	// agrigator() reads from resultChan and agrigates the results into a single map
-	resultChan := make(chan map[string]int, in.cfg.Threads)
+	resultChan := make(chan map[string]int, in.Cfg.Threads)
 	var wg sync.WaitGroup
 	var agWg sync.WaitGroup
 
@@ -80,8 +80,8 @@ func (in *ingest) Run() error {
 	})
 
 	// start each thread
-	for i := range in.cfg.Threads {
-		d, err := NewDecodesData(in.cfg.DecodesFilePath)
+	for i := range in.Cfg.Threads {
+		d, err := NewDecodesData(in.Cfg.DecodesFilePath)
 		if err != nil {
 			return err
 		}
@@ -92,13 +92,13 @@ func (in *ingest) Run() error {
 	}
 
 	// get the size of the file and start sending start, end offsets for each go routine to read
-	s, err := os.Stat(in.cfg.DecodesFilePath)
+	s, err := os.Stat(in.Cfg.DecodesFilePath)
 	if err != nil {
 		return fmt.Errorf("stat file: %w", err)
 	}
 	size := s.Size()
 	var offset int64
-	chunk := int64(in.cfg.ChunkSizeInKB * 1024)
+	chunk := int64(in.Cfg.ChunkSizeInKB * 1024)
 	for offset = 0; offset < size; offset += chunk {
 		offsetChan <- offsetRange{start: offset, end: offset + chunk}
 	}
@@ -114,7 +114,7 @@ func (in *ingest) Run() error {
 }
 
 // PrintResults sorts the in.results by count and prints the results
-func (in *ingest) PrintResults() {
+func (in *Ingest) PrintResults() string {
 	type keyValuePair struct {
 		key   string
 		value int
@@ -126,12 +126,12 @@ func (in *ingest) PrintResults() {
 	sort.Slice(values, func(i, j int) bool {
 		return values[i].value > values[j].value
 	})
-	fmt.Println(values)
+	return fmt.Sprintf("%+v", values)
 }
 
 // agrigator recieves map of url->count when each runThread() finishes reading a chunk of the file,
 // it then merges each of the maps into the final result
-func (in *ingest) agrigator(recv <-chan map[string]int) {
+func (in *Ingest) agrigator(recv <-chan map[string]int) {
 	for data := range recv {
 		for url, count := range data {
 			url = strings.ToLower(url)
@@ -150,8 +150,8 @@ func (in *ingest) agrigator(recv <-chan map[string]int) {
 // 4) if the line is in the correct date range and a hash from the encoding.csv file, add it to the results map
 // 5) when EOF is reached (indicating the end offset has been reached), send the result map to agrigator() via the send channel
 // 6) loop and read the next offset
-func (in *ingest) runThread(threadId int, decode decoder, recv <-chan offsetRange, send chan<- map[string]int) {
-	log := in.log.WithField("thread_id", threadId)
+func (in *Ingest) runThread(threadId int, decode decoder, recv <-chan offsetRange, send chan<- map[string]int) {
+	log := in.Log.WithField("thread_id", threadId)
 	log.Debug("starting...")
 	hash2url := make(map[string]string)
 	// build a quick lookup table to match hashes to the url
@@ -185,7 +185,7 @@ func (in *ingest) runThread(threadId int, decode decoder, recv <-chan offsetRang
 				log.WithError(err).Error("parsing timestamp")
 				continue
 			}
-			if t.Before(in.cfg.StartTime) || t.After(in.cfg.EndTime) {
+			if t.Before(in.Cfg.StartTime) || t.After(in.Cfg.EndTime) {
 				continue
 			}
 
